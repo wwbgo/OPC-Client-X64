@@ -1,12 +1,8 @@
-OPCClientDemo/Win32/
-OPCClientToolKit/Win32/
-OPCPerformance/Win32/
-OPCClientDemo/x64/
-OPCClientToolKit/x64/
-LocalSyncWrapper/x64/
 *.user
 *.ipch
-x64/Debug/
 *.sdf
 *.opensdf
 *.suo
+.vs
+**/Debug/**
+**/Release/**

@@ -89,7 +89,7 @@ class CTransComplete : public ITransactionComplete
         CompletionMessage = "async operation completed";
     }
 
-    void complete(CTransaction &)
+    void complete(CTransaction &transaction)
     {
         printf("%s\n", CompletionMessage.c_str());
     }
@@ -311,7 +311,7 @@ void main(void)
     VARIANT var;
     var.vt = VT_I2;
     var.iVal = 99;
-    readWritableItem->writeSync(var);
+    // readWritableItem->writeSync(var);
 
     // async write
     var.vt = VT_I2;
