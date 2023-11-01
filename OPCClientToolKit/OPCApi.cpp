@@ -1,5 +1,6 @@
 #include "OPCApi.h"
 #include "OPCItem.h"
+#include <map>
 
 bool init(OPCOLEInitMode mode)
 {
@@ -142,6 +143,21 @@ COPCGroup *add_group(COPCServer *server, const char *groupName, bool active, uns
     }
 }
 
+bool remove_group(COPCServer *server, COPCGroup *group)
+{
+    if (!server)
+    {
+        return true;
+    }
+    if (!group)
+    {
+        return true;
+    }
+    delete (group);
+    // COPCClient::comFree(group);
+    return true;
+}
+
 COPCItem *add_item(COPCGroup *group, const char *name, bool active)
 {
     if (!group)
@@ -156,6 +172,27 @@ COPCItem *add_item(COPCGroup *group, const char *name, bool active)
     {
         printf("OPCException: %ws\n", variable.reasonString().c_str());
         return nullptr;
+    }
+}
+
+bool remove_item(COPCGroup *group, COPCItem *item)
+{
+    if (!group)
+    {
+        return true;
+    }
+    if (!item)
+    {
+        return true;
+    }
+    try
+    {
+        return group->removeItem(item);
+    }
+    catch (OPCException variable)
+    {
+        printf("OPCException: %ws\n", variable.reasonString().c_str());
+        return false;
     }
 }
 
@@ -195,6 +232,29 @@ COPCItemNameList add_items(COPCGroup *group, StringList names, bool active)
     return list;
 }
 
+int remove_items(COPCGroup *group, COPCItemList items)
+{
+    if (!group)
+    {
+        return 0;
+    }
+    std::vector<COPCItem *> itemsCreated;
+    std::vector<HRESULT> errors;
+    for (int i = 0; i < items.count; ++i)
+    {
+        itemsCreated.push_back(items.items[i]);
+    }
+    try
+    {
+        return group->removeItems(itemsCreated, errors);
+    }
+    catch (OPCException variable)
+    {
+        printf("OPCException: %ws\n", variable.reasonString().c_str());
+        return -1;
+    }
+}
+
 COPCItemPropertyValueList get_item_properties(COPCItem *item)
 {
     COPCItemPropertyValueList list = {-1};
@@ -227,7 +287,7 @@ COPCItemPropertyValueList get_item_properties(COPCItem *item)
         // printf("%d: %ws %d\n", propVals[i]->propDesc.id, propVals[i]->propDesc.desc.c_str(),
         // propVals[i]->propDesc.type);
         list.data[i].id = propVals[i]->propDesc.id;
-        list.data[i].desc = strdup(COPCHost::WS2S(propVals[i]->propDesc.desc.c_str()).c_str());
+        list.data[i].desc = strdup(COPCHost::WS2S(propVals[i]->propDesc.desc).c_str());
         list.data[i].type = propVals[i]->propDesc.type;
         list.data[i].value = propVals[i]->value;
     }
@@ -321,12 +381,10 @@ class AsyncDataCallback : public IAsyncDataCallback
 {
   private:
     AsyncDataCallbackFunction callback;
+    const void *closure;
 
   public:
-    AsyncDataCallback() : callback(nullptr)
-    {
-    }
-    void setAsyncDataCallback(COPCGroup *group, AsyncDataCallbackFunction cb) noexcept
+    AsyncDataCallback(COPCGroup *group, AsyncDataCallbackFunction cb, const void *cb_closure) noexcept
     {
         try
         {
@@ -337,11 +395,19 @@ class AsyncDataCallback : public IAsyncDataCallback
             // printf("OPCException: %ws\n", variable.reasonString().c_str());
         }
         callback = cb;
+        closure = cb_closure;
+    }
+    ~AsyncDataCallback()
+    {
+        /*if (callback)
+        {
+            delete &callback;
+        }*/
     }
 
     void OnDataChange(COPCGroup &group, COPCItemDataMap &changes)
     {
-        printf("group '%ws', item(s) changed:\n", group.getName().c_str());
+        // printf("-----> group '%ws', item(s) changed:\n", group.getName().c_str());
         try
         {
             POSITION pos = changes.GetStartPosition();
@@ -350,11 +416,21 @@ class AsyncDataCallback : public IAsyncDataCallback
                 OPCItemData *data = changes.GetNextValue(pos);
                 if (data)
                 {
-                    printf("-----> '%ws', changed async read quality %d value %d\n", data->Item->getName().c_str(),
-                           data->wQuality, data->vDataValue.iVal);
                     if (callback)
                     {
-                        callback(group, *data);
+                        printf("-----> group '%ws','%ws', changed async read quality %d value %d\n",
+                               group.getName().c_str(), data->Item->getName().c_str(), data->wQuality,
+                               data->vDataValue.iVal);
+                        callback(
+                            AsyncCallbackData{
+                                strdup(COPCHost::WS2S((group.getName())).c_str()),
+                                strdup(COPCHost::WS2S((data->Item->getName())).c_str()),
+                                data->ftTimeStamp,
+                                data->wQuality,
+                                data->vDataValue,
+                                data->Error,
+                            },
+                            closure);
                     }
                 }
             }
@@ -365,23 +441,47 @@ class AsyncDataCallback : public IAsyncDataCallback
         }
     }
 };
-AsyncDataCallback usrCallBack;
-bool enable_async(COPCGroup *group, AsyncDataCallbackFunction callback)
+
+AsyncDataCallback *enable_async(COPCGroup *group, AsyncDataCallbackFunction callback, const void *cb_closure)
 {
     if (!group)
     {
-        return false;
+        return nullptr;
     }
-    // AsyncDataCallback handler = {group, callback};
-    usrCallBack.setAsyncDataCallback(group, callback);
     try
     {
-        return group->enableAsync(&usrCallBack);
+        AsyncDataCallback *usrCallBack = new AsyncDataCallback(group, callback, cb_closure);
+        if (group->enableAsync(usrCallBack))
+        {
+            return usrCallBack;
+        }
+        delete usrCallBack;
+        return nullptr;
     }
     catch (OPCException variable)
     {
         printf("OPCException: %ws\n", variable.reasonString().c_str());
-        return false;
+        return nullptr;
+    }
+}
+
+bool disable_async(COPCGroup *group, AsyncDataCallback *usrCallBack)
+{
+    if (!group)
+    {
+        return true;
+    }
+    try
+    {
+        bool ret = group->disableAsync();
+        delete usrCallBack;
+        // COPCClient::comFree(usrCallBack);
+        return ret;
+    }
+    catch (OPCException variable)
+    {
+        printf("OPCException: %ws\n", variable.reasonString().c_str());
+        return true;
     }
 }
 
@@ -389,21 +489,26 @@ class TransactionCompleteCallback : public ITransactionComplete
 {
   private:
     TransactionCompleteCallbackFunction callback;
+    const void *closure;
 
   public:
-    TransactionCompleteCallback(TransactionCompleteCallbackFunction cb) noexcept
+    TransactionCompleteCallback(TransactionCompleteCallbackFunction cb, const void *cb_closure) noexcept
     {
         callback = cb;
+        closure = cb_closure;
+    }
+    ~TransactionCompleteCallback()
+    {
     }
 
     void complete(CTransaction &transaction) noexcept
     {
         try
         {
-            printf("transaction isCompleted: %d\n", transaction.isCompleted());
+            // printf("transaction isCompleted: %d\n", transaction.isCompleted());
             if (callback)
             {
-                callback(transaction);
+                callback(&transaction, closure);
             }
         }
         catch (OPCException variable)
@@ -412,89 +517,103 @@ class TransactionCompleteCallback : public ITransactionComplete
         }
     }
 };
-std::vector<TransactionCompleteCallback> completes;
-CTransaction *read_async(COPCItem *item, TransactionCompleteCallbackFunction transactionCB)
+Transaction read_async(COPCItem *item, TransactionCompleteCallbackFunction transactionCB, const void *cb_closure)
 {
     if (!item)
     {
-        return nullptr;
+        return Transaction{};
     }
-    TransactionCompleteCallback complete{transactionCB};
-    completes.push_back(complete);
+    TransactionCompleteCallback *callback = new TransactionCompleteCallback{transactionCB, cb_closure};
     try
     {
-        return item->readAsync(&complete);
+        CTransaction *trans = item->readAsync(callback);
+        return Transaction{
+            trans,
+            callback,
+        };
     }
     catch (OPCException variable)
     {
         printf("OPCException: %ws\n", variable.reasonString().c_str());
-        return nullptr;
+        return Transaction{};
     }
 }
 
-CTransaction *multi_read_async(COPCGroup *group, COPCItemList items, TransactionCompleteCallbackFunction transactionCB)
+Transaction multi_read_async(COPCGroup *group, COPCItemList items, TransactionCompleteCallbackFunction transactionCB,
+                             const void *cb_closure)
 {
     if (!group)
     {
-        return nullptr;
+        return Transaction{};
     }
     std::vector<COPCItem *> itemsCreated;
     for (int i = 0; i < items.count; i++)
     {
         itemsCreated.push_back(items.items[i]);
     }
-    TransactionCompleteCallback complete{transactionCB};
-    completes.push_back(complete);
+    TransactionCompleteCallback *callback = new TransactionCompleteCallback{transactionCB, cb_closure};
     try
     {
-        return group->readAsync(itemsCreated, &complete);
+        CTransaction *trans = group->readAsync(itemsCreated, callback);
+        return Transaction{
+            trans,
+            callback,
+        };
     }
     catch (OPCException variable)
     {
         printf("OPCException: %ws\n", variable.reasonString().c_str());
-        return nullptr;
+        return Transaction{};
     }
 }
 
-CTransaction *refresh_async(COPCGroup *group, OPCDATASOURCE source, TransactionCompleteCallbackFunction transactionCB)
+Transaction refresh_async(COPCGroup *group, OPCDATASOURCE source, TransactionCompleteCallbackFunction transactionCB,
+                          const void *cb_closure)
 {
     if (!group)
     {
-        return nullptr;
+        return Transaction{};
     }
-    TransactionCompleteCallback complete{transactionCB};
-    completes.push_back(complete);
+    TransactionCompleteCallback *callback = new TransactionCompleteCallback{transactionCB, cb_closure};
     try
     {
-        return group->refresh(source, &complete);
+        CTransaction *trans = group->refresh(source, callback);
+        return Transaction{
+            trans,
+            callback,
+        };
     }
     catch (OPCException variable)
     {
         printf("OPCException: %ws\n", variable.reasonString().c_str());
-        return nullptr;
+        return Transaction{};
     }
 }
 
-CTransaction *write_async(COPCItem *item, VARIANT data, TransactionCompleteCallbackFunction transactionCB)
+Transaction write_async(COPCItem *item, VARIANT data, TransactionCompleteCallbackFunction transactionCB,
+                        const void *cb_closure)
 {
     if (!item)
     {
-        return nullptr;
+        return Transaction{};
     }
-    TransactionCompleteCallback complete{transactionCB};
-    completes.push_back(complete);
+    TransactionCompleteCallback *callback = new TransactionCompleteCallback{transactionCB, cb_closure};
     try
     {
-        return item->writeAsync(data, &complete);
+        CTransaction *trans = item->writeAsync(data, callback);
+        return Transaction{
+            trans,
+            callback,
+        };
     }
     catch (OPCException variable)
     {
         printf("OPCException: %ws\n", variable.reasonString().c_str());
-        return nullptr;
+        return Transaction{};
     }
 }
 
-int transaction_completed(const CTransaction *transaction)
+int transaction_completed(CTransaction *transaction)
 {
     if (!transaction)
     {
@@ -511,7 +630,7 @@ int transaction_completed(const CTransaction *transaction)
     }
 }
 
-OPCItemData get_item_value(const CTransaction *transaction, COPCItem *item)
+OPCItemData get_item_value(CTransaction *transaction, COPCItem *item)
 {
     if (!transaction)
     {
@@ -528,7 +647,7 @@ OPCItemData get_item_value(const CTransaction *transaction, COPCItem *item)
     }
 }
 
-bool delete_transaction(COPCGroup *group, CTransaction *transaction)
+bool delete_transaction(COPCGroup *group, Transaction transaction)
 {
     if (!group)
     {
@@ -536,7 +655,11 @@ bool delete_transaction(COPCGroup *group, CTransaction *transaction)
     }
     try
     {
-        return group->deleteTransaction(transaction);
+        bool ret = group->deleteTransaction(transaction.transaction);
+        delete (transaction.callback);
+        delete (transaction.transaction);
+        // COPCClient::comFree(transaction.transaction);
+        return ret;
     }
     catch (OPCException variable)
     {

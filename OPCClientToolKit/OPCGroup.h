@@ -109,12 +109,16 @@ class OPCDACLIENT_API COPCGroup
 
     COPCItem *addItem(std::wstring &name, bool active);
 
+    bool removeItem(COPCItem *item);
+
     /**
      * returns the number of failed item creates
      * itemsCreated[x] will be null if could not create and will contain error code in corresponding error entry
      */
     int addItems(std::vector<std::wstring> &names, std::vector<COPCItem *> &items, std::vector<HRESULT> &errors,
                  bool active);
+
+    int removeItems(std::vector<COPCItem *> &items, std::vector<HRESULT> &errors);
 
     static OPCHANDLE getOpcHandle(void *ptr)
     {

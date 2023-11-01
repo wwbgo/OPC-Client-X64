@@ -437,6 +437,20 @@ COPCItem *COPCGroup::addItem(std::wstring &name, bool active)
 
 } // COPCGroup::addItem
 
+bool COPCGroup::removeItem(COPCItem *item)
+{
+    std::vector<COPCItem *> items;
+    std::vector<HRESULT> errors;
+    items.push_back(item);
+    if (removeItems(items, errors) != 0)
+    {
+        throw OPCException(L"COPCGroup::removeItem: FAILED to remove item");
+    }
+
+    return items[0];
+
+} // COPCGroup::removeItem
+
 int COPCGroup::addItems(std::vector<std::wstring> &names, std::vector<COPCItem *> &items, std::vector<HRESULT> &errors,
                         bool active)
 {
@@ -502,6 +516,52 @@ int COPCGroup::addItems(std::vector<std::wstring> &names, std::vector<COPCItem *
     return errorCount;
 
 } // COPCGroup::addItems
+
+int COPCGroup::removeItems(std::vector<COPCItem *> &items, std::vector<HRESULT> &errors)
+{
+    errors.resize(items.size());
+    OPCHANDLE *itemHandle = new OPCHANDLE[items.size()];
+    for (unsigned i = 0; i < items.size(); ++i)
+    {
+        OPCHANDLE handle = getOpcHandle(items[i]);
+        itemHandle[i] = handle;
+    } // for
+
+    HRESULT *results = nullptr;
+    DWORD nbrItems = static_cast<DWORD>(items.size());
+
+    HRESULT result = getItemManagementInterface()->RemoveItems(nbrItems, itemHandle, &results);
+    delete[] itemHandle;
+    for (unsigned i = 0; i < items.size(); ++i)
+    {
+        delete items[i];
+    }
+
+    if (FAILED(result))
+    {
+        throw OPCException(L"COPCGroup::removeItems: FAILED to remove items");
+    }
+
+    int errorCount = 0;
+    for (unsigned i = 0; i < nbrItems; ++i)
+    {
+        if (FAILED(results[i]))
+        {
+            errors[i] = results[i];
+            ++errorCount;
+        } // if
+        else
+        {
+            GroupItemDataMap.RemoveKey(itemHandle[i]);
+            errors[i] = ERROR_SUCCESS;
+        } // else
+    }     // for
+
+    COPCClient::comFree(itemHandle);
+    COPCClient::comFree(results);
+    return errorCount;
+
+} // COPCGroup::removeItems
 
 OPCHANDLE COPCGroup::addItemData(COPCItemDataMap &opcItemDataMap, COPCItem *item, HRESULT error)
 {

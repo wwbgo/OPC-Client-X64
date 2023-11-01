@@ -43,8 +43,24 @@ struct OPCDACLIENT_API COPCItemPropertyValueList
     int count;
     COPCItemPropertyValue *data;
 };
-typedef void (*AsyncDataCallbackFunction)(COPCGroup &group, OPCItemData changed);
-typedef void (*TransactionCompleteCallbackFunction)(CTransaction &transaction);
+struct OPCDACLIENT_API AsyncCallbackData
+{
+    char *groupName;
+    char *itemName;
+    FILETIME ftTimeStamp;
+    WORD wQuality;
+    VARIANT vDataValue;
+    HRESULT Error;
+};
+typedef class OPCDACLIENT_API AsyncDataCallback;
+typedef class TransactionCompleteCallback;
+struct OPCDACLIENT_API Transaction
+{
+    CTransaction *transaction;
+    TransactionCompleteCallback *callback;
+};
+typedef void (*AsyncDataCallbackFunction)(AsyncCallbackData changed, const void *cb_closure);
+typedef void (*TransactionCompleteCallbackFunction)(CTransaction *transaction, const void *cb_closure);
 extern "C"
 {
     OPCDACLIENT_API bool init(OPCOLEInitMode mode = APARTMENTTHREADED);
@@ -63,9 +79,15 @@ extern "C"
                                          unsigned long reqUpdateRate_ms, unsigned long &revisedUpdateRate_ms,
                                          float deadBand);
 
+    OPCDACLIENT_API bool remove_group(COPCServer *server, COPCGroup *groupName);
+
     OPCDACLIENT_API COPCItem *add_item(COPCGroup *group, const char *name, bool active);
 
+    OPCDACLIENT_API bool remove_item(COPCGroup *group, COPCItem *item);
+
     OPCDACLIENT_API COPCItemNameList add_items(COPCGroup *group, StringList names, bool active);
+
+    OPCDACLIENT_API int remove_items(COPCGroup *group, COPCItemList items);
 
     OPCDACLIENT_API COPCItemPropertyValueList get_item_properties(COPCItem *item);
 
@@ -75,24 +97,30 @@ extern "C"
 
     OPCDACLIENT_API bool write_sync(COPCItem *item, VARIANT data);
 
-    OPCDACLIENT_API bool enable_async(COPCGroup *group, AsyncDataCallbackFunction callback);
+    OPCDACLIENT_API AsyncDataCallback *enable_async(COPCGroup *group, AsyncDataCallbackFunction callback,
+                                                    const void *cb_closure);
 
-    OPCDACLIENT_API CTransaction *read_async(COPCItem *item, TransactionCompleteCallbackFunction transactionCB);
+    OPCDACLIENT_API bool disable_async(COPCGroup *group, AsyncDataCallback *usrCallBack);
 
-    OPCDACLIENT_API CTransaction *multi_read_async(COPCGroup *group, COPCItemList items,
-                                                   TransactionCompleteCallbackFunction transactionCB);
+    OPCDACLIENT_API Transaction read_async(COPCItem *item, TransactionCompleteCallbackFunction transactionCB,
+                                           const void *cb_closure);
 
-    OPCDACLIENT_API CTransaction *refresh_async(COPCGroup *group, OPCDATASOURCE source,
-                                                TransactionCompleteCallbackFunction transactionCB);
+    OPCDACLIENT_API Transaction multi_read_async(COPCGroup *group, COPCItemList items,
+                                                 TransactionCompleteCallbackFunction transactionCB,
+                                                 const void *cb_closure);
 
-    OPCDACLIENT_API CTransaction *write_async(COPCItem *item, VARIANT data,
-                                              TransactionCompleteCallbackFunction transactionCB);
+    OPCDACLIENT_API Transaction refresh_async(COPCGroup *group, OPCDATASOURCE source,
+                                              TransactionCompleteCallbackFunction transactionCB,
+                                              const void *cb_closure);
 
-    OPCDACLIENT_API int transaction_completed(const CTransaction *transaction);
+    OPCDACLIENT_API Transaction write_async(COPCItem *item, VARIANT data,
+                                            TransactionCompleteCallbackFunction transactionCB, const void *cb_closure);
 
-    OPCDACLIENT_API OPCItemData get_item_value(const CTransaction *transaction, COPCItem *item);
+    OPCDACLIENT_API int transaction_completed(CTransaction *transaction);
 
-    OPCDACLIENT_API bool delete_transaction(COPCGroup *group, CTransaction *transaction);
+    OPCDACLIENT_API OPCItemData get_item_value(CTransaction *transaction, COPCItem *item);
+
+    OPCDACLIENT_API bool delete_transaction(COPCGroup *group, Transaction transaction);
 
     OPCDACLIENT_API void close();
 }
