@@ -548,6 +548,7 @@ int COPCGroup::removeItems(std::vector<COPCItem *> &items, std::vector<HRESULT> 
         if (FAILED(results[i]))
         {
             errors[i] = results[i];
+            // printf("OPCException: %d\n", results[i]);
             ++errorCount;
         } // if
         else
@@ -557,7 +558,6 @@ int COPCGroup::removeItems(std::vector<COPCItem *> &items, std::vector<HRESULT> 
         } // else
     }     // for
 
-    COPCClient::comFree(itemHandle);
     COPCClient::comFree(results);
     return errorCount;
 

@@ -153,8 +153,15 @@ bool remove_group(COPCServer *server, COPCGroup *group)
     {
         return true;
     }
-    delete (group);
-    // COPCClient::comFree(group);
+    try
+    {
+        delete (group);
+    }
+    catch (OPCException variable)
+    {
+        printf("OPCException: %ws\n", variable.reasonString().c_str());
+        return false;
+    }
     return true;
 }
 
@@ -475,7 +482,6 @@ bool disable_async(COPCGroup *group, AsyncDataCallback *usrCallBack)
     {
         bool ret = group->disableAsync();
         delete usrCallBack;
-        // COPCClient::comFree(usrCallBack);
         return ret;
     }
     catch (OPCException variable)
@@ -658,7 +664,6 @@ bool delete_transaction(COPCGroup *group, Transaction transaction)
         bool ret = group->deleteTransaction(transaction.transaction);
         delete (transaction.callback);
         delete (transaction.transaction);
-        // COPCClient::comFree(transaction.transaction);
         return ret;
     }
     catch (OPCException variable)
