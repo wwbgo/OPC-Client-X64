@@ -340,7 +340,14 @@ OPCItemDataList multi_read_sync(COPCGroup *group, COPCItemList items, OPCDATASOU
     try
     {
         group->readSync(itemsCreated, itemDataMap, OPC_DS_DEVICE);
-        POSITION pos = itemDataMap.GetStartPosition();
+        for (size_t i = 0; i < itemsCreated.size(); i++)
+        {
+            OPCHANDLE handle = itemsCreated.at(i)->getHandle();
+            OPCItemData *data;
+            itemDataMap.Lookup(handle, data);
+            itemsData.push_back(*data);
+        }
+        /*POSITION pos = itemDataMap.GetStartPosition();
         while (pos)
         {
             OPCHANDLE handle = itemDataMap.GetKeyAt(pos);
@@ -351,7 +358,7 @@ OPCItemDataList multi_read_sync(COPCGroup *group, COPCItemList items, OPCDATASOU
                 printf("-----> handle: %u, group sync read quality %d value %d\n", handle, data->wQuality,
                        data->vDataValue.iVal);
             }
-        }
+        }*/
     }
     catch (OPCException variable)
     {

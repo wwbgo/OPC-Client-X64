@@ -54,6 +54,9 @@
     <ClCompile Include="OPCApi.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="OPCApiEx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="OPCClient.h">
@@ -98,9 +101,14 @@
     <ClInclude Include="OPCApi.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="OPCApiEx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ReadMe.txt" />
+    <None Include="cpp.hint" />
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="OPCClientToolKit.rc">

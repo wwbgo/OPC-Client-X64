@@ -1,5 +1,7 @@
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.7.34202.233
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OPCClientToolKit", "OPCClientToolKit\OPCClientToolKit.vcxproj", "{169E1B60-878B-4237-95FF-065DD5F36180}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OPCPerformance", "OPCPerformance\OPCPerformance.vcxproj", "{18DC0413-2248-469E-8E2B-1628A59A0DF8}"
@@ -53,5 +55,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {057FD253-4F1C-4FAE-B108-72494E2A875C}
 	EndGlobalSection
 EndGlobal

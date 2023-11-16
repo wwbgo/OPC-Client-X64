@@ -30,4 +30,9 @@
   <ItemGroup>
     <None Include="ReadMe.txt" />
   </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="..\..\docs\config.json">
+      <Filter>Resource Files</Filter>
+    </CopyFileToFolders>
+  </ItemGroup>
 </Project>

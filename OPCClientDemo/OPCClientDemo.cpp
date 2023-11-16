@@ -30,6 +30,7 @@ Boston, MA  02111-1307, USA.
 #include "OPCItem.h"
 #include "OPCServer.h"
 #include "opcda.h"
+#include <OPCApiEx.h>
 
 /**
  * Code demonstrates
@@ -118,6 +119,27 @@ class CTransComplete : public ITransactionComplete
 
 void main(void)
 {
+    try
+    {
+        OPCManager opc;
+        opc.connect("Win32\\Debug\\config.json");
+        auto data = opc.read(0);
+        VARIANT value;
+        value.vt = VT_I2;
+        value.iVal = 299;
+        const auto ret = opc.write(0, value);
+        SubscribeCallback *callback = {};
+        opc.setCallback(callback);
+        opc.subscribe();
+        opc.unsubscribe();
+        opc.close();
+    }
+    catch (OPCException variable)
+    {
+        printf("OPCException: %ws\n", variable.reasonString().c_str());
+    }
+    return;
+
     COPCClient::init();
 
     printf("input hostname (warning: NOT an IP address, use such as: 'Jhon-PC' or 'localhost' / <ENTER> ):\n"); // See
