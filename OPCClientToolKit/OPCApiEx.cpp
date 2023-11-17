@@ -600,7 +600,6 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
             opc->connect(jsonPath);
             *driverHandle = (int)opc;
             OPCMap.SetAt(*driverHandle, opc);
-            printf("driverHandle: %p\n", *driverHandle);
         }
         else if (cmdStr == "Read")
         {
