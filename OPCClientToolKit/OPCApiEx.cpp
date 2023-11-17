@@ -176,77 +176,57 @@ static DECIMAL ConvertDoubleToDecimal(double value) noexcept
 
     return decValue;
 }
-static int8_t ConvertOPCDataToByteArray(OPCItemData data, vector<uint8_t> &byteArray, uint64_t *timestamp) noexcept
+static int8_t ConvertOPCDataToByteArray(OPCItemData data, vector<uint8_t> &byteArray) noexcept
 {
-    byteArray.clear();
-    *timestamp = ConvertFiletimeToLong(data.ftTimeStamp);
     const auto dataType = data.vDataValue.vt;
     switch (dataType)
     {
     case VT_EMPTY:
+        byteArray.resize(0);
         return 1;
     case VT_NULL:
+        byteArray.resize(0);
         return 1;
     case VT_I2:
-        byteArray.reserve(sizeof(SHORT));
-        for (size_t i = 0; i < sizeof(SHORT); ++i)
-        {
-            byteArray.push_back(data.vDataValue.iVal & 0xFF);
-            data.vDataValue.iVal >>= 8;
-        }
+        byteArray.resize(sizeof(SHORT));
+        memcpy(byteArray.data(), &data.vDataValue.iVal, sizeof(SHORT));
         return 1;
     case VT_I4:
-        byteArray.reserve(sizeof(INT));
-        for (size_t i = 0; i < sizeof(INT); ++i)
-        {
-            byteArray.push_back(data.vDataValue.intVal & 0xFF);
-            data.vDataValue.intVal >>= 8;
-        }
+        byteArray.resize(sizeof(INT));
+        memcpy(byteArray.data(), &data.vDataValue.intVal, sizeof(INT));
         return 1;
     case VT_R4:
-        byteArray.reserve(sizeof(FLOAT));
-        memcpy(&byteArray, &data.vDataValue.fltVal, sizeof(FLOAT));
+        byteArray.resize(sizeof(FLOAT));
+        memcpy(byteArray.data(), &data.vDataValue.fltVal, sizeof(FLOAT));
         return 1;
     case VT_R8:
-        byteArray.reserve(sizeof(DOUBLE));
-        memcpy(&byteArray, &data.vDataValue.dblVal, sizeof(DOUBLE));
+        byteArray.resize(sizeof(DOUBLE));
+        memcpy(byteArray.data(), &data.vDataValue.dblVal, sizeof(DOUBLE));
         return 1;
     case VT_CY:
-        byteArray.reserve(sizeof(LONGLONG));
-        for (size_t i = 0; i < sizeof(LONGLONG); ++i)
-        {
-            byteArray.push_back(data.vDataValue.cyVal.int64 & 0xFF);
-            data.vDataValue.cyVal.int64 >>= 8;
-        }
+        byteArray.resize(sizeof(LONGLONG));
+        memcpy(byteArray.data(), &data.vDataValue.cyVal.int64, sizeof(LONGLONG));
         return 1;
     case VT_DATE:
-        byteArray.reserve(sizeof(DATE));
-        memcpy(&byteArray, &data.vDataValue.date, sizeof(DATE));
+        byteArray.resize(sizeof(DATE));
+        memcpy(byteArray.data(), &data.vDataValue.date, sizeof(DATE));
         return 1;
     case VT_BSTR: {
         const wstring wstr = data.vDataValue.bstrVal;
         const string str = COPCHost::WS2S(wstr);
-        byteArray.reserve(str.size());
-        memcpy(&byteArray, str.c_str(), str.size());
+        byteArray.resize(str.size());
+        memcpy(byteArray.data(), str.c_str(), str.size());
     }
         return 1;
     /*case VT_DISPATCH:
         return 1;*/
     case VT_ERROR:
-        byteArray.reserve(sizeof(SCODE));
-        for (size_t i = 0; i < sizeof(SCODE); ++i)
-        {
-            byteArray.push_back(data.vDataValue.scode & 0xFF);
-            data.vDataValue.scode >>= 8;
-        }
+        byteArray.resize(sizeof(SCODE));
+        memcpy(byteArray.data(), &data.vDataValue.scode, sizeof(SCODE));
         return 1;
     case VT_BOOL:
-        byteArray.reserve(sizeof(VARIANT_BOOL));
-        for (size_t i = 0; i < sizeof(VARIANT_BOOL); ++i)
-        {
-            byteArray.push_back(data.vDataValue.boolVal & 0xFF);
-            data.vDataValue.boolVal >>= 8;
-        }
+        byteArray.resize(sizeof(VARIANT_BOOL));
+        memcpy(byteArray.data(), &data.vDataValue.boolVal, sizeof(VARIANT_BOOL));
         return 1;
     /*case VT_VARIANT:
         return 1;*/
@@ -254,65 +234,42 @@ static int8_t ConvertOPCDataToByteArray(OPCItemData data, vector<uint8_t> &byteA
         return 1;*/
     case VT_DECIMAL: {
         double decVal = ConvertDecimalToDouble(data.vDataValue.decVal);
-        byteArray.reserve(sizeof(double));
-        memcpy(&byteArray, &decVal, sizeof(double));
+        byteArray.resize(sizeof(double));
+        memcpy(byteArray.data(), &decVal, sizeof(double));
     }
         return 1;
     /*case VT_RECORD:
         return 1;*/
     case VT_I1:
-        byteArray.reserve(sizeof(BYTE));
-        for (size_t i = 0; i < sizeof(BYTE); ++i)
-        {
-            byteArray.push_back(data.vDataValue.bVal & 0xFF);
-            data.vDataValue.bVal >>= 8;
-        }
+        byteArray.resize(sizeof(BYTE));
+        memcpy(byteArray.data(), &data.vDataValue.bVal, sizeof(BYTE));
         return 1;
     case VT_UI1:
-        byteArray.reserve(sizeof(CHAR));
-        for (size_t i = 0; i < sizeof(CHAR); ++i)
-        {
-            byteArray.push_back(data.vDataValue.cVal & 0xFF);
-            data.vDataValue.cVal >>= 8;
-        }
+        byteArray.resize(sizeof(CHAR));
+        memcpy(byteArray.data(), &data.vDataValue.cVal, sizeof(CHAR));
         return 1;
     case VT_UI2:
-        byteArray.reserve(sizeof(USHORT));
-        for (size_t i = 0; i < sizeof(SHORT); ++i)
-        {
-            byteArray.push_back(data.vDataValue.uiVal & 0xFF);
-            data.vDataValue.uiVal >>= 8;
-        }
+        byteArray.resize(sizeof(USHORT));
+        memcpy(byteArray.data(), &data.vDataValue.uiVal, sizeof(SHORT));
         return 1;
     case VT_UI4:
-        byteArray.reserve(sizeof(ULONG));
-        for (size_t i = 0; i < sizeof(ULONG); ++i)
-        {
-            byteArray.push_back(data.vDataValue.ulVal & 0xFF);
-            data.vDataValue.ulVal >>= 8;
-        }
+        byteArray.resize(sizeof(ULONG));
+        memcpy(byteArray.data(), &data.vDataValue.ulVal, sizeof(ULONG));
         return 1;
     case VT_INT:
-        byteArray.reserve(sizeof(INT));
-        for (size_t i = 0; i < sizeof(INT); ++i)
-        {
-            byteArray.push_back(data.vDataValue.intVal & 0xFF);
-            data.vDataValue.intVal >>= 8;
-        }
+        byteArray.resize(sizeof(INT));
+        memcpy(byteArray.data(), &data.vDataValue.intVal, sizeof(INT));
         return 1;
     case VT_UINT:
-        byteArray.reserve(sizeof(UINT));
-        for (size_t i = 0; i < sizeof(UINT); ++i)
-        {
-            byteArray.push_back(data.vDataValue.uintVal & 0xFF);
-            data.vDataValue.uintVal >>= 8;
-        }
+        byteArray.resize(sizeof(UINT));
+        memcpy(byteArray.data(), &data.vDataValue.uintVal, sizeof(UINT));
         return 1;
     /*case VT_ARRAY:
         return 1;
     case VT_BYREF:
         return 1;*/
     default:
+        byteArray.resize(0);
         printf("data type unsupported: %d\n", dataType);
         break;
     }
@@ -547,18 +504,27 @@ void SubscribeCallback::OnDataChange(COPCGroup &group, COPCItemDataMap &changes)
                 try
                 {
                     VariableParameter param{};
-                    vector<uint8_t> buf;
-                    uint64_t timestamp;
-                    auto status = ConvertOPCDataToByteArray(*data, buf, &timestamp);
                     auto idStr = to_string(id);
                     param.id = idStr.c_str();
-                    param.status = &status;
+                    uint64_t timestamp = ConvertFiletimeToLong(data->ftTimeStamp);
                     param.timestamp = &timestamp;
-                    param.dataLength = buf.size();
-                    param.data = buf.data();
+                    int8_t status = 0;
+                    vector<uint8_t> buf;
+                    if (data->Error < 0)
+                    {
+                        param.dataLength = 0;
+                    }
+                    else
+                    {
+                        status = ConvertOPCDataToByteArray(*data, buf);
+                        param.dataLength = buf.size();
+                        param.data = buf.data();
+                    }
+                    param.status = &status;
+                    // printf("'%s'%d %d\n", idStr.c_str(), param.dataLength, data->Error);
                     Callback(&param);
-                    /*printf("'%ws' quality %d value %d\n", item->getName().c_str(), data->wQuality,
-                           data->vDataValue.iVal);*/
+                    /*printf("'%ws' %ws quality %d error %d\n", item->getName().c_str(), idStr.c_str(), data->wQuality,
+                           data->Error);*/
                 }
                 catch (OPCException ex)
                 {
@@ -650,7 +616,15 @@ EnumDrvRet DriverCmd(const char *cmd, void *driverHandle, void *param)
                 const auto var = varParam->variables[i];
                 const auto id = stoi(var.id);
                 auto data = opc->read(id);
-                *var.status = ConvertOPCDataToByteArray(data, buf, var.timestamp);
+                *var.timestamp = ConvertFiletimeToLong(data.ftTimeStamp);
+                if (data.Error < 0)
+                {
+                    *var.status = 0;
+                }
+                else
+                {
+                    *var.status = ConvertOPCDataToByteArray(data, buf);
+                }
                 if (var.dataLength < buf.size())
                 {
                     return EnumDrvRet::ENUMDRVRET_ERROR;
