@@ -306,11 +306,8 @@ static bool ConvertByteArrayToOPCData(uint8_t *byteArray, VARIANT *value) noexce
     case VT_DATE:
         memcpy(&(*value).date, byteArray, sizeof(DATE));
         return true;
-    case VT_BSTR: {
-        const string str = reinterpret_cast<char *>(byteArray);
-        const wstring wstr = COPCHost::S2WS(str);
-        (*value).bstrVal = const_cast<BSTR>(wstr.data());
-    }
+    case VT_BSTR:
+        (*value).bstrVal = CComBSTR((char *)byteArray);
         return true;
     /*case VT_DISPATCH:
         return true;*/

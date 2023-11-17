@@ -125,9 +125,9 @@ void main(void)
         opc.connect("Win32\\Debug\\config.json");
         auto data = opc.read(0);
         VARIANT value;
-        value.vt = VT_I2;
-        value.iVal = 299;
-        const auto ret = opc.write(0, value);
+        value.vt = VT_BSTR;
+        value.bstrVal = CComBSTR("2222");
+        const auto ret = opc.write(1, value);
         SubscribeCallback *callback = {};
         opc.setCallback(callback);
         opc.subscribe();
