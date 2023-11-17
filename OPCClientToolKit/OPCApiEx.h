@@ -140,6 +140,7 @@ class OPCManager
 
     void close();
 };
+static CAtlMap<int, OPCManager *> OPCMap;
 
 extern "C"
 {
@@ -162,7 +163,7 @@ extern "C"
     /*									  "CloseDriver",param无效,设为NULL
     /*[返回值]成功或错误码
     /**********************************************************************/
-    OPCDACLIENT_API EnumDrvRet DriverCmd(const char *cmd, void *driverHandle, void *param);
+    OPCDACLIENT_API EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param);
 }
 
 /* OPC DA Quality Codes

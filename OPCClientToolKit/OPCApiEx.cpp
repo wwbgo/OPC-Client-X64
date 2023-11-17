@@ -582,7 +582,7 @@ void OPCManager::close()
     }
 }
 
-EnumDrvRet DriverCmd(const char *cmd, void *driverHandle, void *param)
+EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
 {
     try
     {
@@ -598,13 +598,17 @@ EnumDrvRet DriverCmd(const char *cmd, void *driverHandle, void *param)
             printf("json file path: %s\n", jsonPath.c_str());
             OPCManager *opc = new OPCManager();
             opc->connect(jsonPath);
-            void **driverHandlePtr = static_cast<void **>(driverHandle);
-            *driverHandlePtr = opc;
-            printf("driverHandle: %p\n", opc);
+            *driverHandle = (int)opc;
+            OPCMap.SetAt(*driverHandle, opc);
+            printf("driverHandle: %p\n", *driverHandle);
         }
         else if (cmdStr == "Read")
         {
-            OPCManager *opc = static_cast<OPCManager *>(driverHandle);
+            OPCManager *opc;
+            if (!OPCMap.Lookup(*driverHandle, opc))
+            {
+                return EnumDrvRet::ENUMDRVRET_ERROR;
+            }
             const VariablesParameter *varParam = static_cast<VariablesParameter *>(param);
             if (varParam->length < 1 || !varParam->variables)
             {
@@ -634,7 +638,11 @@ EnumDrvRet DriverCmd(const char *cmd, void *driverHandle, void *param)
         }
         else if (cmdStr == "Write")
         {
-            OPCManager *opc = static_cast<OPCManager *>(driverHandle);
+            OPCManager *opc;
+            if (!OPCMap.Lookup(*driverHandle, opc))
+            {
+                return EnumDrvRet::ENUMDRVRET_ERROR;
+            }
             const VariableParameter *varParam = static_cast<VariableParameter *>(param);
             const auto id = stoi(varParam->id);
             const auto item = opc->getItem(id);
@@ -657,25 +665,43 @@ EnumDrvRet DriverCmd(const char *cmd, void *driverHandle, void *param)
         }
         else if (cmdStr == "SubscribeCallBack")
         {
-            OPCManager *opc = static_cast<OPCManager *>(driverHandle);
+            OPCManager *opc;
+            if (!OPCMap.Lookup(*driverHandle, opc))
+            {
+                return EnumDrvRet::ENUMDRVRET_ERROR;
+            }
             SubscribeCallbackFunction callbackFunc = static_cast<SubscribeCallbackFunction>(param);
             SubscribeCallback *callback = new SubscribeCallback(callbackFunc, opc);
             opc->setCallback(callback);
         }
         else if (cmdStr == "Subscribe")
         {
-            OPCManager *opc = static_cast<OPCManager *>(driverHandle);
+            OPCManager *opc;
+            if (!OPCMap.Lookup(*driverHandle, opc))
+            {
+                return EnumDrvRet::ENUMDRVRET_ERROR;
+            }
             opc->subscribe();
         }
         else if (cmdStr == "UnSubscribe")
         {
-            OPCManager *opc = static_cast<OPCManager *>(driverHandle);
+            OPCManager *opc;
+            if (!OPCMap.Lookup(*driverHandle, opc))
+            {
+                return EnumDrvRet::ENUMDRVRET_ERROR;
+            }
             opc->unsubscribe();
         }
         else if (cmdStr == "CloseDriver")
         {
-            OPCManager *opc = static_cast<OPCManager *>(driverHandle);
+            OPCManager *opc;
+            if (!OPCMap.Lookup(*driverHandle, opc))
+            {
+                return EnumDrvRet::ENUMDRVRET_ERROR;
+            }
             opc->close();
+            OPCMap.RemoveKey(*driverHandle);
+            delete opc;
         }
         else
         {
