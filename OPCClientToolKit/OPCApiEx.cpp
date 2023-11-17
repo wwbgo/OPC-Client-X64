@@ -179,10 +179,7 @@ static DECIMAL ConvertDoubleToDecimal(double value) noexcept
 static int8_t ConvertOPCDataToByteArray(OPCItemData data, vector<uint8_t> &byteArray, uint64_t *timestamp) noexcept
 {
     byteArray.clear();
-    if (timestamp)
-    {
-        *timestamp = ConvertFiletimeToLong(data.ftTimeStamp);
-    }
+    *timestamp = ConvertFiletimeToLong(data.ftTimeStamp);
     const auto dataType = data.vDataValue.vt;
     switch (dataType)
     {
@@ -534,43 +531,39 @@ void SubscribeCallback::OnDataChange(COPCGroup &group, COPCItemDataMap &changes)
     POSITION pos = changes.GetStartPosition();
     while (pos)
     {
-        OPCHANDLE handle = changes.GetKeyAt(pos);
+        // const OPCHANDLE handle = changes.GetKeyAt(pos);
         OPCItemData *data = changes.GetNextValue(pos);
         if (data)
         {
             const COPCItem *item = data->item();
             if (item)
             {
-                printf("-----> '%ws', handle: %u, changed async read quality %d value %d\n", item->getName().c_str(),
-                       handle, data->wQuality, data->vDataValue.iVal);
                 int id;
+                const OPCHANDLE handle = item->getHandle();
                 if (!Manager->getItemId(handle, id))
                 {
                     continue;
                 }
-                VariableParameter param{};
                 try
                 {
+                    VariableParameter param{};
+                    vector<uint8_t> buf;
+                    uint64_t timestamp;
+                    auto status = ConvertOPCDataToByteArray(*data, buf, &timestamp);
                     auto idStr = to_string(id);
                     param.id = idStr.c_str();
-                    vector<uint8_t> buf;
-                    *param.status = ConvertOPCDataToByteArray(*data, buf, param.timestamp);
+                    param.status = &status;
+                    param.timestamp = &timestamp;
                     param.dataLength = buf.size();
-                    if (param.dataLength > 0)
-                    {
-                        param.data = new uint8_t[param.dataLength];
-                        memcpy(param.data, buf.data(), param.dataLength);
-                    }
+                    param.data = buf.data();
                     Callback(&param);
+                    /*printf("'%ws' quality %d value %d\n", item->getName().c_str(), data->wQuality,
+                           data->vDataValue.iVal);*/
                 }
                 catch (OPCException ex)
                 {
                     printf("opc SubscribeCallback failed: %ws %ws\n", item->getName().c_str(),
                            ex.reasonString().c_str());
-                }
-                if (param.dataLength > 0)
-                {
-                    delete param.data;
                 }
             }
         }
