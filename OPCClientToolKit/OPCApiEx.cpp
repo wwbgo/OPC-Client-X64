@@ -567,6 +567,7 @@ void OPCManager::close()
     if (Callback)
     {
         unsubscribe();
+        delete Callback;
         Callback = nullptr;
     }
     try
