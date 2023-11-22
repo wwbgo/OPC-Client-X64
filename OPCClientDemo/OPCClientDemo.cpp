@@ -121,9 +121,10 @@ void main(void)
 {
     try
     {
-        OPCManager opc;
-        opc.connect("Win32\\Debug\\config.json");
-        auto data = opc.read(0);
+        OPCManager opc = {"Win32\\Debug\\config.json"};
+        opc.connect();
+        OPCItemData data;
+        opc.read(0, data);
         VARIANT value;
         value.vt = VT_BSTR;
         value.bstrVal = CComBSTR("2222");

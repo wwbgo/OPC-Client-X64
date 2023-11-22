@@ -17,6 +17,8 @@ struct OPCJsonItem
 struct OPCJsonGroup
 {
     string name;
+    unsigned long updateRate;
+    float deadBand;
     bool subscribe;
     vector<OPCJsonItem> items;
 
@@ -46,7 +48,7 @@ OPCJson readOPCJson(const string &jsonFile)
     Json hostKey = json.at("Host");
     if (!hostKey.is_string())
     {
-        throw OPCException(L"Host field is not string");
+        throw OPCException(L"Host field is not string type");
     }
     OPCJson data;
     hostKey.get_to(data.host);
@@ -57,7 +59,7 @@ OPCJson readOPCJson(const string &jsonFile)
     Json serverKey = json.at("Server");
     if (!serverKey.is_string())
     {
-        throw OPCException(L"Server field is not string");
+        throw OPCException(L"Server field is not string type");
     }
     serverKey.get_to(data.server);
     if (data.server.empty())
@@ -77,7 +79,7 @@ OPCJson readOPCJson(const string &jsonFile)
         Json groupNameKey = group.at("Group");
         if (!groupNameKey.is_string())
         {
-            throw OPCException(L"Group field is not string");
+            throw OPCException(L"Group field is not string type");
         }
         groupNameKey.get_to(_group.name);
         if (_group.name.empty())
@@ -101,13 +103,13 @@ OPCJson readOPCJson(const string &jsonFile)
             Json itemIdKey = item.at("Id");
             if (!itemIdKey.is_number_integer())
             {
-                throw OPCException(L"Variable Id field is not int");
+                throw OPCException(L"Variable Id field is not int type");
             }
             itemIdKey.get_to(_item.id);
             Json itemNameKey = item.at("Name");
             if (!itemNameKey.is_string())
             {
-                throw OPCException(L"Variable Name field is not string");
+                throw OPCException(L"Variable Name field is not string type");
             }
             itemNameKey.get_to(_item.name);
             if (_item.name.empty())
@@ -117,12 +119,49 @@ OPCJson readOPCJson(const string &jsonFile)
 
             _group.items.push_back(_item);
         }
-        Json subscribeKey = group.at("IsSubscribe");
-        if (!subscribeKey.is_boolean())
+        Json updateRateKey = group.at("UpdateRate");
+        if (updateRateKey.is_null())
         {
-            throw OPCException(L"Group IsSubscribe field is not bool");
+            _group.updateRate = 1000;
         }
-        subscribeKey.get_to(_group.subscribe);
+        else
+        {
+            if (!updateRateKey.is_number_unsigned())
+            {
+                throw OPCException(L"Group UpdateRate field is not ulong type");
+            }
+            updateRateKey.get_to(_group.updateRate);
+            if (_group.updateRate < 100)
+            {
+                _group.updateRate = 100;
+            }
+        }
+        Json deadBandKey = group.at("DeadZone");
+        if (deadBandKey.is_null())
+        {
+            _group.deadBand = 0.0;
+        }
+        else
+        {
+            if (!deadBandKey.is_number())
+            {
+                throw OPCException(L"Group DeadZone field is not float type");
+            }
+            deadBandKey.get_to(_group.deadBand);
+        }
+        Json subscribeKey = group.at("IsSubscribe");
+        if (subscribeKey.is_null())
+        {
+            _group.subscribe = false;
+        }
+        else
+        {
+            if (!subscribeKey.is_boolean())
+            {
+                throw OPCException(L"Group IsSubscribe field is not bool type");
+            }
+            subscribeKey.get_to(_group.subscribe);
+        }
 
         data.groups.push_back(_group);
     }
@@ -358,9 +397,9 @@ static bool ConvertByteArrayToOPCData(uint8_t *byteArray, VARIANT *value) noexce
     return false;
 }
 
-void OPCManager::connect(const string &jsonFile)
+void OPCManager::connect()
 {
-    OPCJson json = readOPCJson(jsonFile);
+    OPCJson json = readOPCJson(JsonFile);
     printf("host: %s, server: %s\n", json.host.c_str(), json.server.c_str());
 
     COPCClient::init(OPCOLEInitMode::MULTITHREADED);
@@ -371,10 +410,26 @@ void OPCManager::connect(const string &jsonFile)
     {
         throw OPCException(L"connect opc server failed");
     }
+    Sleep(1000);
+    ServerStatus status;
+    if (!Server->getStatus(status))
+    {
+        throw OPCException(L"opc server status has error");
+    }
+    printf("server status: %d\n", status.dwServerState);
+    if (status.dwServerState == tagOPCSERVERSTATE::OPC_STATUS_FAILED)
+    {
+        throw OPCException(L"opc server not running");
+    }
+    if (status.dwServerState == tagOPCSERVERSTATE::OPC_STATUS_COMM_FAULT)
+    {
+        throw OPCException(L"opc server not running");
+    }
     for (auto &groupJson : json.groups)
     {
         unsigned long revisedUpdateRate_ms;
-        COPCGroup *group = Server->makeGroup(COPCHost::S2WS(groupJson.name), true, 1000, revisedUpdateRate_ms, 0.0);
+        COPCGroup *group = Server->makeGroup(COPCHost::S2WS(groupJson.name), true, groupJson.updateRate,
+                                             revisedUpdateRate_ms, groupJson.deadBand);
         if (!group)
         {
             throw OPCException(L"opc client make group failed");
@@ -409,6 +464,82 @@ void OPCManager::connect(const string &jsonFile)
         }
     }
 }
+void OPCManager::reconnect()
+{
+    try
+    {
+        COPCClient::stop();
+    }
+    catch (...)
+    {
+        printf("opc close failed\n");
+    }
+    SubscribeGroups.clear();
+    ItemMap.RemoveAll();
+    ItemRevoteMap.RemoveAll();
+
+    unsubscribe();
+    connect();
+    subscribe();
+
+    printf("SubscribeGroups: %d, Items: %d, %d\n", SubscribeGroups.size(), ItemMap.GetCount(),
+           ItemRevoteMap.GetCount());
+}
+bool OPCManager::checkServerStatus(bool retryConnect)
+{
+    ServerStatus status;
+    try
+    {
+        if (!Server->getStatus(status))
+        {
+            throw OPCException(L"opc server status has error");
+        }
+        printf("server status: %d\n", status.dwServerState);
+        if (status.dwServerState != tagOPCSERVERSTATE::OPC_STATUS_RUNNING)
+        {
+            throw OPCException(L"opc server not running");
+        }
+        return true;
+    }
+    catch (OPCException ex)
+    {
+        printf("opc error: %ws\n", ex.reasonString().c_str());
+        if (retryConnect)
+        {
+            reconnect();
+            for (size_t i = 0; i < 5; i++)
+            {
+                Sleep(1000);
+                try
+                {
+                    if (!Server->getStatus(status))
+                    {
+                        throw OPCException(L"opc server status has error");
+                    }
+                    printf("server status: %d\n", status.dwServerState);
+                    if (status.dwServerState != tagOPCSERVERSTATE::OPC_STATUS_RUNNING)
+                    {
+                        throw OPCException(L"opc server not running");
+                    }
+                    return true;
+                }
+                catch (OPCException ex1)
+                {
+                    printf("opc reconnect error: %ws\n", ex1.reasonString().c_str());
+                }
+                catch (...)
+                {
+                    printf("opc reconnect error\n");
+                }
+            }
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+}
 
 void OPCManager::read(const vector<int> &itemIds, vector<OPCItemData> &data)
 {
@@ -431,32 +562,32 @@ void OPCManager::read(const vector<int> &itemIds, vector<OPCItemData> &data)
                 printf("opc read failed: %ws %ws\n", item->getName().c_str(), ex.reasonString().c_str());
             }
         }
-        data.push_back(nullptr);
+        throw OPCException(L"opc read failed");
     }
 }
 
-OPCItemData OPCManager::read(int itemId)
+int OPCManager::read(int itemId, OPCItemData &value)
 {
     COPCItem *item;
     if (ItemMap.Lookup(itemId, item))
     {
-        OPCItemData value;
         try
         {
             if (item->readSync(value, OPCDATASOURCE::OPC_DS_DEVICE))
             {
-                return value;
+                return 0;
             }
         }
         catch (OPCException ex)
         {
             printf("opc read failed: %ws %ws\n", item->getName().c_str(), ex.reasonString().c_str());
         }
+        return -2;
     }
-    return nullptr;
+    return -1;
 }
 
-HRESULT OPCManager::write(int itemId, VARIANT data)
+int OPCManager::write(int itemId, VARIANT data)
 {
     COPCItem *item;
     if (ItemMap.Lookup(itemId, item))
@@ -467,11 +598,16 @@ HRESULT OPCManager::write(int itemId, VARIANT data)
             {
                 return 0;
             }
+            else
+            {
+                return -1;
+            }
         }
         catch (OPCException ex)
         {
             printf("opc write failed: %ws %ws\n", item->getName().c_str(), ex.reasonString().c_str());
         }
+        return -2;
     }
     return -1;
 }
@@ -490,44 +626,44 @@ void SubscribeCallback::OnDataChange(COPCGroup &group, COPCItemDataMap &changes)
         if (data)
         {
             const COPCItem *item = data->item();
-            if (item)
+            if (!item)
             {
-                int id;
-                const OPCHANDLE handle = item->getHandle();
-                if (!Manager->getItemId(handle, id))
+                printf("opc OnDataChange failed: %d %ws\n", changes.GetKeyAt(pos), item->getName().c_str());
+            }
+            int id;
+            const OPCHANDLE handle = item->getHandle();
+            if (!Manager->getItemId(handle, id))
+            {
+                continue;
+            }
+            try
+            {
+                VariableParameter param{};
+                auto idStr = to_string(id);
+                param.id = idStr.c_str();
+                uint64_t timestamp = ConvertFiletimeToLong(data->ftTimeStamp);
+                param.timestamp = &timestamp;
+                int8_t status = 0;
+                vector<uint8_t> buf;
+                if (data->Error < 0)
                 {
-                    continue;
+                    param.dataLength = 0;
                 }
-                try
+                else
                 {
-                    VariableParameter param{};
-                    auto idStr = to_string(id);
-                    param.id = idStr.c_str();
-                    uint64_t timestamp = ConvertFiletimeToLong(data->ftTimeStamp);
-                    param.timestamp = &timestamp;
-                    int8_t status = 0;
-                    vector<uint8_t> buf;
-                    if (data->Error < 0)
-                    {
-                        param.dataLength = 0;
-                    }
-                    else
-                    {
-                        status = ConvertOPCDataToByteArray(*data, buf);
-                        param.dataLength = buf.size();
-                        param.data = buf.data();
-                    }
-                    param.status = &status;
-                    // printf("'%s'%d %d\n", idStr.c_str(), param.dataLength, data->Error);
-                    Callback(&param);
-                    /*printf("'%ws' %ws quality %d error %d\n", item->getName().c_str(), idStr.c_str(), data->wQuality,
-                           data->Error);*/
+                    status = ConvertOPCDataToByteArray(*data, buf);
+                    param.dataLength = buf.size();
+                    param.data = buf.data();
                 }
-                catch (OPCException ex)
-                {
-                    printf("opc SubscribeCallback failed: %ws %ws\n", item->getName().c_str(),
-                           ex.reasonString().c_str());
-                }
+                param.status = &status;
+                // printf("'%s'%d %d\n", idStr.c_str(), param.dataLength, data->Error);
+                Callback(&param);
+                /*printf("'%ws' %ws quality %d error %d\n", item->getName().c_str(), idStr.c_str(), data->wQuality,
+                       data->Error);*/
+            }
+            catch (OPCException ex)
+            {
+                printf("opc SubscribeCallback failed: %ws %ws\n", item->getName().c_str(), ex.reasonString().c_str());
             }
         }
     }
@@ -594,8 +730,8 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
             }
             string jsonPath = initParam->property[0].value;
             printf("json file path: %s\n", jsonPath.c_str());
-            OPCManager *opc = new OPCManager();
-            opc->connect(jsonPath);
+            OPCManager *opc = new OPCManager(jsonPath);
+            opc->connect();
             *driverHandle = (int)opc;
             OPCMap.SetAt(*driverHandle, opc);
         }
@@ -614,9 +750,25 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
             vector<uint8_t> buf;
             for (size_t i = 0; i < varParam->length; i++)
             {
+                auto retryN = 0;
+            retryRead:
+                retryN++;
                 const auto var = varParam->variables[i];
                 const auto id = stoi(var.id);
-                auto data = opc->read(id);
+                OPCItemData data;
+                const auto ret = opc->read(id, data);
+                if (ret != 0)
+                {
+                    if (ret == -2)
+                    {
+                        if (retryN < 2 && opc->checkServerStatus(true))
+                        {
+                            goto retryRead;
+                        }
+                        return EnumDrvRet::ENUMDRVRET_DisConnected;
+                    }
+                    return EnumDrvRet::ENUMDRVRET_ERROR;
+                }
                 *var.timestamp = ConvertFiletimeToLong(data.ftTimeStamp);
                 if (data.Error < 0)
                 {
@@ -640,6 +792,9 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
             {
                 return EnumDrvRet::ENUMDRVRET_ERROR;
             }
+            auto retryN = 0;
+        retryWrite:
+            retryN++;
             const VariableParameter *varParam = static_cast<VariableParameter *>(param);
             const auto id = stoi(varParam->id);
             const auto item = opc->getItem(id);
@@ -655,8 +810,16 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
                 return EnumDrvRet::ENUMDRVRET_ERROR;
             }
             const auto ret = opc->write(id, value);
-            if (ret < 0)
+            if (ret != 0)
             {
+                if (ret == -2)
+                {
+                    if (retryN < 2 && opc->checkServerStatus(true))
+                    {
+                        goto retryWrite;
+                    }
+                    return EnumDrvRet::ENUMDRVRET_DisConnected;
+                }
                 return EnumDrvRet::ENUMDRVRET_ERROR;
             }
         }
@@ -688,6 +851,22 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
                 return EnumDrvRet::ENUMDRVRET_ERROR;
             }
             opc->unsubscribe();
+        }
+        else if (cmdStr == "GetStatus")
+        {
+            OPCManager *opc;
+            if (!OPCMap.Lookup(*driverHandle, opc))
+            {
+                return EnumDrvRet::ENUMDRVRET_ERROR;
+            }
+            if (opc->checkServerStatus(true))
+            {
+                return EnumDrvRet::ENUMDRVRET_OK;
+            }
+            else
+            {
+                return EnumDrvRet::ENUMDRVRET_DisConnected;
+            }
         }
         else if (cmdStr == "CloseDriver")
         {

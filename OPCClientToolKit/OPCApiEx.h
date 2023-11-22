@@ -11,8 +11,35 @@ enum OPCDACLIENT_API EnumDrvRet
     ENUMDRVRET_OK = 0,
     ENUMDRVRET_PartialOK = -1,
     ENUMDRVRET_ERROR = -2,
-    ENUMDRVRET_UNKNOWCMD = -3
+    ENUMDRVRET_UNKNOWCMD = -3,
+    ENUMDRVRET_DisConnected = -4,
 };
+extern "C"
+{
+    /*********************************************************************/
+    /*[功能描述]驱动提供给使用者的统一接口
+    /*[参数说明]cmd(接口类型)-如"InitDriver"-表示创建驱动对象并初始化,
+    /*							"Read"-常规模式读,
+    /*							"Write"-常规模式写,
+    /*							"CloseDriver"-销毁驱动对象,
+    /*							"Subscribe"-订阅,
+    /*							"UnSubscribe"-取消订阅,
+    /*							"SubscribeCallBack"-订阅回调,
+    /*							"GetStatus"-获取连接状态,
+    /*			driverHandle(驱动对象)-"InitDriver"是int*(输出的新建对象)
+    /*								     其他命令是int*(要访问的驱动对象)
+    /*			request(命令参数)-如"InitDriver",((void*)request)是InitDriverParameter*(通讯属性指针)
+    /*								"Read",((void*)request)是VariablesParameter*(寄存器条目数组对象指针)
+    /*								"Write",((void*)request)是VariableParameter*(寄存器条目指针)
+    /*								"Subscribe",((void*)request)是VariablesParameter*(寄存器条目数组对象指针)
+    /*								"UnSubscribe",((void*)request)是VariablesParameter*(寄存器条目数组对象指针)
+    /* "SubscribeCallBack",((void*)request)是void*(回调方法指针)，返回数据格式-VariableParameter
+    /*								"GetStatus",param无效,设为NULL
+    /*								"CloseDriver",param无效,设为NULL
+    /*[返回值]成功或错误码
+    /**********************************************************************/
+    OPCDACLIENT_API EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param);
+}
 
 struct OPCDACLIENT_API CommonProperty
 {
@@ -45,6 +72,7 @@ struct OPCDACLIENT_API VariablesParameter
     int length;
     VariableParameter *variables;
 };
+
 typedef void (*SubscribeCallbackFunction)(const VariableParameter *variableParameter);
 class SubscribeCallback : public IAsyncDataCallback
 {
@@ -72,6 +100,7 @@ class SubscribeCallback : public IAsyncDataCallback
 class OPCManager
 {
   private:
+    string JsonFile;
     COPCHost *Host;
     COPCServer *Server;
     vector<COPCGroup *> SubscribeGroups;
@@ -80,8 +109,9 @@ class OPCManager
     SubscribeCallback *Callback;
 
   public:
-    OPCManager() noexcept
+    OPCManager(const string &jsonFile) noexcept
     {
+        JsonFile = jsonFile;
         Host = nullptr;
         Server = nullptr;
         Callback = nullptr;
@@ -117,13 +147,15 @@ class OPCManager
         return ItemRevoteMap.Lookup(item, id);
     }
 
-    void connect(const string &jsonFile);
+    void connect();
+    void reconnect();
+    bool checkServerStatus(bool retryConnect);
 
     void read(const vector<int> &itemIds, vector<OPCItemData> &data);
 
-    OPCItemData read(int itemId);
+    int read(int itemId, OPCItemData &value);
 
-    HRESULT OPCManager::write(int itemId, VARIANT data);
+    int OPCManager::write(int itemId, VARIANT data);
 
     void setCallback(SubscribeCallback *callback) noexcept
     {
@@ -141,30 +173,6 @@ class OPCManager
     void close();
 };
 static CAtlMap<int, OPCManager *> OPCMap;
-
-extern "C"
-{
-    /*********************************************************************/
-    /*[功能描述]驱动提供给使用者的统一接口
-    /*[参数说明]cmd(接口类型)-如"InitDriver"-表示创建驱动对象并初始化,
-    /*									  "Read"-常规模式读,
-    /*									  "Write"-常规模式写,
-    /*									  "CloseDriver"-销毁驱动对象,
-    /*									  "Subscribe"-订阅,
-    /*									  "UnSubscribe"-取消订阅,
-    /*									  "SubscribeCallBack"-订阅回调,
-    /*				driverHandle(驱动对象)-"InitDriver"是int*(输出的新建对象) 其他命令是int*(要访问的驱动对象)
-    /*				param(命令参数)-如"InitDriver",((void*)request)是InitDriverParameter*(通讯属性指针)
-    /*									  "Read",((void*)request)是VariablesParameter*(寄存器条目数组对象指针)
-    /*									  "Write",((void*)request)是VariableParameter*(寄存器条目指针)
-    /*									  "Subscribe",((void*)request)是VariablesParameter*(寄存器条目数组对象指针)
-    /*                                    "UnSubscribe",((void*)request)是VariablesParameter*(寄存器条目数组对象指针)
-    /*									  "SubscribeCallBack",((void*)request)是void*(回调方法指针)
-    /*									  "CloseDriver",param无效,设为NULL
-    /*[返回值]成功或错误码
-    /**********************************************************************/
-    OPCDACLIENT_API EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param);
-}
 
 /* OPC DA Quality Codes
 0
