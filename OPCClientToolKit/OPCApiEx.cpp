@@ -855,7 +855,15 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
             string jsonPath = initParam->property[0].value;
             printf("json file path: %s\n", jsonPath.c_str());
             OPCManager *opc = new OPCManager(jsonPath);
-            opc->connect();
+            try
+            {
+                opc->connect();
+            }
+            catch (OPCException ex)
+            {
+                delete opc;
+                throw ex;
+            }
             *driverHandle = (int)opc;
             OPCMap.SetAt(*driverHandle, opc);
         }
