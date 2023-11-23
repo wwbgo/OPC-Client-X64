@@ -97,9 +97,17 @@ class SubscribeCallback : public IAsyncDataCallback
 
     void OnDataChange(COPCGroup &group, COPCItemDataMap &changes);
 };
+enum OPCManagerStatus
+{
+    STOP = 0,
+    DISCONNECTED = 1,
+    CONNECTED = 2,
+    CONNECTING = 3,
+};
 class OPCManager
 {
   private:
+    OPCManagerStatus Status;
     string JsonFile;
     COPCHost *Host;
     COPCServer *Server;
@@ -112,6 +120,7 @@ class OPCManager
     OPCManager(const string &jsonFile) noexcept
     {
         JsonFile = jsonFile;
+        Status = OPCManagerStatus::STOP;
         Host = nullptr;
         Server = nullptr;
         Callback = nullptr;

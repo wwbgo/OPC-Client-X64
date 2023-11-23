@@ -4,6 +4,7 @@
 
 #include "OPCServer.h"
 #include <fstream>
+#include <mutex>
 #include <nlohmann/json.hpp>
 using Json = nlohmann::json;
 
@@ -399,6 +400,8 @@ static bool ConvertByteArrayToOPCData(uint8_t *byteArray, VARIANT *value) noexce
 
 void OPCManager::connect()
 {
+    Status = OPCManagerStatus::CONNECTING;
+
     OPCJson json = readOPCJson(JsonFile);
     printf("host: %s, server: %s\n", json.host.c_str(), json.server.c_str());
 
@@ -463,9 +466,29 @@ void OPCManager::connect()
             }
         }
     }
+
+    Status = OPCManagerStatus::CONNECTED;
 }
+std::mutex mtx;
 void OPCManager::reconnect()
 {
+    if (Status == OPCManagerStatus::STOP)
+    {
+        return;
+    }
+    if (Status == OPCManagerStatus::CONNECTED)
+    {
+        return;
+    }
+    if (Status == OPCManagerStatus::CONNECTING)
+    {
+        Sleep(1000);
+        return;
+    }
+    std::lock_guard<std::mutex> lock(mtx);
+
+    Status = OPCManagerStatus::CONNECTING;
+
     try
     {
         COPCClient::stop();
@@ -484,29 +507,41 @@ void OPCManager::reconnect()
 
     printf("SubscribeGroups: %d, Items: %d, %d\n", SubscribeGroups.size(), ItemMap.GetCount(),
            ItemRevoteMap.GetCount());
+
+    Status = OPCManagerStatus::CONNECTED;
 }
 bool OPCManager::checkServerStatus(bool retryConnect)
 {
-    ServerStatus status;
-    try
+    if (Status == OPCManagerStatus::STOP)
     {
-        if (!Server->getStatus(status))
-        {
-            throw OPCException(L"opc server status has error");
-        }
-        printf("server status: %d\n", status.dwServerState);
-        if (status.dwServerState != tagOPCSERVERSTATE::OPC_STATUS_RUNNING)
-        {
-            throw OPCException(L"opc server not running");
-        }
-        return true;
+        return false;
     }
-    catch (OPCException ex)
+    if (Status == OPCManagerStatus::CONNECTING)
     {
-        printf("opc error: %ws\n", ex.reasonString().c_str());
+        Sleep(1000);
+    }
+    ServerStatus status;
+    if (Status == OPCManagerStatus::DISCONNECTED)
+    {
         if (retryConnect)
         {
-            reconnect();
+            Sleep(1000);
+            try
+            {
+                reconnect();
+            }
+            catch (OPCException ex2)
+            {
+                printf("opc server reconnect failed: %ws\n", ex2.reasonString().c_str());
+                Status = OPCManagerStatus::DISCONNECTED;
+                return false;
+            }
+            catch (...)
+            {
+                printf("opc server reconnect failed\n");
+                Status = OPCManagerStatus::DISCONNECTED;
+                return false;
+            }
             for (size_t i = 0; i < 5; i++)
             {
                 Sleep(1000);
@@ -521,6 +556,7 @@ bool OPCManager::checkServerStatus(bool retryConnect)
                     {
                         throw OPCException(L"opc server not running");
                     }
+                    Status = OPCManagerStatus::CONNECTED;
                     return true;
                 }
                 catch (OPCException ex1)
@@ -532,17 +568,88 @@ bool OPCManager::checkServerStatus(bool retryConnect)
                     printf("opc reconnect error\n");
                 }
             }
-            return true;
         }
-        else
+        Status = OPCManagerStatus::DISCONNECTED;
+        return false;
+    }
+    try
+    {
+        if (!Server->getStatus(status))
         {
-            return false;
+            throw OPCException(L"opc server status has error");
         }
+        printf("server status: %d\n", status.dwServerState);
+        if (status.dwServerState != tagOPCSERVERSTATE::OPC_STATUS_RUNNING)
+        {
+            throw OPCException(L"opc server not running");
+        }
+        Status = OPCManagerStatus::CONNECTED;
+        return true;
+    }
+    catch (OPCException ex)
+    {
+        printf("opc get status error: %ws\n", ex.reasonString().c_str());
+        if (retryConnect)
+        {
+            Sleep(1000);
+            try
+            {
+                reconnect();
+            }
+            catch (OPCException ex2)
+            {
+                printf("opc server reconnect failed: %ws\n", ex2.reasonString().c_str());
+                Status = OPCManagerStatus::DISCONNECTED;
+                return false;
+            }
+            catch (...)
+            {
+                printf("opc server reconnect failed\n");
+                Status = OPCManagerStatus::DISCONNECTED;
+                return false;
+            }
+            for (size_t i = 0; i < 5; i++)
+            {
+                Sleep(1000);
+                try
+                {
+                    if (!Server->getStatus(status))
+                    {
+                        throw OPCException(L"opc server status has error");
+                    }
+                    printf("server status: %d\n", status.dwServerState);
+                    if (status.dwServerState != tagOPCSERVERSTATE::OPC_STATUS_RUNNING)
+                    {
+                        throw OPCException(L"opc server not running");
+                    }
+                    Status = OPCManagerStatus::CONNECTED;
+                    return true;
+                }
+                catch (OPCException ex1)
+                {
+                    printf("opc reconnect error: %ws\n", ex1.reasonString().c_str());
+                }
+                catch (...)
+                {
+                    printf("opc reconnect error\n");
+                }
+            }
+        }
+        Status = OPCManagerStatus::DISCONNECTED;
+        return false;
     }
 }
 
 void OPCManager::read(const vector<int> &itemIds, vector<OPCItemData> &data)
 {
+    if (Status == OPCManagerStatus::STOP)
+    {
+        throw OPCException(L"opc stopped");
+    }
+    if (Status == OPCManagerStatus::CONNECTING || Status == OPCManagerStatus::DISCONNECTED)
+    {
+        throw OPCException(L"opc disconnected");
+    }
     for (auto &itemId : itemIds)
     {
         COPCItem *item;
@@ -568,6 +675,14 @@ void OPCManager::read(const vector<int> &itemIds, vector<OPCItemData> &data)
 
 int OPCManager::read(int itemId, OPCItemData &value)
 {
+    if (Status == OPCManagerStatus::STOP)
+    {
+        return -1;
+    }
+    if (Status == OPCManagerStatus::CONNECTING || Status == OPCManagerStatus::DISCONNECTED)
+    {
+        return -2;
+    }
     COPCItem *item;
     if (ItemMap.Lookup(itemId, item))
     {
@@ -589,6 +704,14 @@ int OPCManager::read(int itemId, OPCItemData &value)
 
 int OPCManager::write(int itemId, VARIANT data)
 {
+    if (Status == OPCManagerStatus::STOP)
+    {
+        return -1;
+    }
+    if (Status == OPCManagerStatus::CONNECTING || Status == OPCManagerStatus::DISCONNECTED)
+    {
+        return -2;
+    }
     COPCItem *item;
     if (ItemMap.Lookup(itemId, item))
     {
@@ -700,6 +823,7 @@ void OPCManager::unsubscribe()
 
 void OPCManager::close()
 {
+    Status = OPCManagerStatus::STOP;
     if (Callback)
     {
         unsubscribe();
@@ -751,18 +875,18 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
             for (size_t i = 0; i < varParam->length; i++)
             {
                 auto retryN = 0;
-            retryRead:
-                retryN++;
                 const auto var = varParam->variables[i];
                 const auto id = stoi(var.id);
+            retryRead:
                 OPCItemData data;
                 const auto ret = opc->read(id, data);
                 if (ret != 0)
                 {
                     if (ret == -2)
                     {
-                        if (retryN < 2 && opc->checkServerStatus(true))
+                        if (retryN < 1 && opc->checkServerStatus(true))
                         {
+                            retryN++;
                             goto retryRead;
                         }
                         return EnumDrvRet::ENUMDRVRET_DisConnected;
@@ -793,10 +917,9 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
                 return EnumDrvRet::ENUMDRVRET_ERROR;
             }
             auto retryN = 0;
-        retryWrite:
-            retryN++;
             const VariableParameter *varParam = static_cast<VariableParameter *>(param);
             const auto id = stoi(varParam->id);
+        retryWrite:
             const auto item = opc->getItem(id);
             if (!item)
             {
@@ -814,8 +937,9 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
             {
                 if (ret == -2)
                 {
-                    if (retryN < 2 && opc->checkServerStatus(true))
+                    if (retryN < 1 && opc->checkServerStatus(true))
                     {
+                        retryN++;
                         goto retryWrite;
                     }
                     return EnumDrvRet::ENUMDRVRET_DisConnected;
