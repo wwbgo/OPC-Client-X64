@@ -966,7 +966,7 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
             SubscribeCallback *callback = new SubscribeCallback(callbackFunc, opc);
             opc->setCallback(callback);
         }
-        else if (cmdStr == "Subscribe")
+        else if (cmdStr == "Subscribe" || cmdStr == "EnableSubscribe")
         {
             OPCManager *opc;
             if (!OPCMap.Lookup(*driverHandle, opc))

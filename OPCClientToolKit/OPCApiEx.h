@@ -31,6 +31,8 @@ extern "C"
     /*			request(命令参数)-如"InitDriver",((void*)request)是InitDriverParameter*(通讯属性指针)
     /*								"Read",((void*)request)是VariablesParameter*(寄存器条目数组对象指针)
     /*								"Write",((void*)request)是VariableParameter*(寄存器条目指针)
+    /* "SubscribeCallBack",((void*)request)是void*(回调方法指针)，返回数据格式-VariableParameter
+    /*								"EnableSubscribe",param无效,设为NULL
     /*								"Subscribe",((void*)request)是VariablesParameter*(寄存器条目数组对象指针)
     /*								"UnSubscribe",((void*)request)是VariablesParameter*(寄存器条目数组对象指针)
     /* "SubscribeCallBack",((void*)request)是void*(回调方法指针)，返回数据格式-VariableParameter
