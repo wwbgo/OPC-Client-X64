@@ -164,7 +164,7 @@ class OPCManager
 
     void read(const vector<int> &itemIds, vector<OPCItemData> &data);
 
-    int read(int itemId, OPCItemData &value);
+    int read(int itemId, OPCItemData &value, OPCDATASOURCE source);
 
     int OPCManager::write(int itemId, VARIANT data);
 

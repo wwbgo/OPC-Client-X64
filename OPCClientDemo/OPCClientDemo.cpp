@@ -124,7 +124,7 @@ void main(void)
         OPCManager opc = {"Win32\\Debug\\config.json"};
         opc.connect();
         OPCItemData data;
-        opc.read(0, data);
+        opc.read(0, data, OPCDATASOURCE::OPC_DS_DEVICE);
         VARIANT value;
         value.vt = VT_BSTR;
         value.bstrVal = CComBSTR("2222");

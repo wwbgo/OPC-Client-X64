@@ -296,6 +296,14 @@ static int8_t ConvertOPCDataToByteArray(OPCItemData data, vector<uint8_t> &byteA
         byteArray.resize(sizeof(ULONG));
         memcpy(byteArray.data(), &data.vDataValue.ulVal, sizeof(ULONG));
         return 1;
+    case VT_I8:
+        byteArray.resize(sizeof(LONG64));
+        memcpy(byteArray.data(), &data.vDataValue.ulVal, sizeof(LONG64));
+        return 1;
+    case VT_UI8:
+        byteArray.resize(sizeof(ULONG64));
+        memcpy(byteArray.data(), &data.vDataValue.ulVal, sizeof(ULONG64));
+        return 1;
     case VT_INT:
         byteArray.resize(sizeof(INT));
         memcpy(byteArray.data(), &data.vDataValue.intVal, sizeof(INT));
@@ -380,6 +388,12 @@ static bool ConvertByteArrayToOPCData(uint8_t *byteArray, VARIANT *value) noexce
         return true;
     case VT_UI4:
         memcpy(&(*value).ulVal, byteArray, sizeof(ULONG));
+        return true;
+    case VT_I8:
+        memcpy(&(*value).ulVal, byteArray, sizeof(LONG64));
+        return true;
+    case VT_UI8:
+        memcpy(&(*value).ulVal, byteArray, sizeof(ULONG64));
         return true;
     case VT_INT:
         memcpy(&(*value).intVal, byteArray, sizeof(INT));
@@ -673,7 +687,7 @@ void OPCManager::read(const vector<int> &itemIds, vector<OPCItemData> &data)
     }
 }
 
-int OPCManager::read(int itemId, OPCItemData &value)
+int OPCManager::read(int itemId, OPCItemData &value, OPCDATASOURCE source)
 {
     if (Status == OPCManagerStatus::STOP)
     {
@@ -688,7 +702,7 @@ int OPCManager::read(int itemId, OPCItemData &value)
     {
         try
         {
-            if (item->readSync(value, OPCDATASOURCE::OPC_DS_DEVICE))
+            if (item->readSync(value, source))
             {
                 return 0;
             }
@@ -885,9 +899,29 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
                 auto retryN = 0;
                 const auto var = varParam->variables[i];
                 const auto id = stoi(var.id);
+                auto source = OPCDATASOURCE::OPC_DS_CACHE;
+                if (var.attributesLen > 0)
+                {
+                    for (size_t j = 0; j < var.attributesLen; j++)
+                    {
+                        const auto attr = var.attributes[j];
+                        if (attr.name == "source")
+                        {
+                            if (attr.value == "device")
+                            {
+                                source = OPCDATASOURCE::OPC_DS_DEVICE;
+                            }
+                            else if (attr.value == "cache")
+                            {
+                                source = OPCDATASOURCE::OPC_DS_CACHE;
+                            }
+                            break;
+                        }
+                    }
+                }
             retryRead:
                 OPCItemData data;
-                const auto ret = opc->read(id, data);
+                const auto ret = opc->read(id, data, source);
                 if (ret != 0)
                 {
                     if (ret == -2)
