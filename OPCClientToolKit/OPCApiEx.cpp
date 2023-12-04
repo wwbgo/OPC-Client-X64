@@ -905,13 +905,13 @@ EnumDrvRet DriverCmd(const char *cmd, int *driverHandle, void *param)
                     for (size_t j = 0; j < var.attributesLen; j++)
                     {
                         const auto attr = var.attributes[j];
-                        if (attr.name == "source")
+                        if (strcmp(attr.name, "source") == 0)
                         {
-                            if (attr.value == "device")
+                            if (strcmp(attr.value, "device") == 0)
                             {
                                 source = OPCDATASOURCE::OPC_DS_DEVICE;
                             }
-                            else if (attr.value == "cache")
+                            else if (strcmp(attr.value, "cache") == 0)
                             {
                                 source = OPCDATASOURCE::OPC_DS_CACHE;
                             }
