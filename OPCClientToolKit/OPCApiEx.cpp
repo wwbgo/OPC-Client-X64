@@ -168,15 +168,27 @@ OPCJson readOPCJson(const string &jsonFile)
     }
     return data;
 }
+// 116444736000000000: 从1601年1月1日0:0:0:000到1970年1月1日0:0:0:000的时间(单位100ns)
+const uint64_t DATETIMEDIFF = 116444736000000000;
+/// <summary>
+/// 精确到纳秒
+/// </summary>
+/// <param name="fileTime"></param>
+/// <returns></returns>
 static uint64_t ConvertFiletimeToLong(FILETIME fileTime) noexcept
 {
-    // 116444736000000000: 从1601年1月1日0:0:0:000到1970年1月1日0:0:0:000的时间(单位100ns)
-    return ((static_cast<uint64_t>(fileTime.dwHighDateTime)) << 32 | static_cast<uint64_t>(fileTime.dwLowDateTime)) -
-           116444736000000000;
+    return (((static_cast<uint64_t>(fileTime.dwHighDateTime)) << 32 | static_cast<uint64_t>(fileTime.dwLowDateTime)) -
+            DATETIMEDIFF) *
+           100;
 }
+/// <summary>
+/// 精确到纳秒
+/// </summary>
+/// <param name="timestamp"></param>
+/// <returns></returns>
 static FILETIME ConvertLongToFiletime(uint64_t timestamp) noexcept
 {
-    const auto fileTime = timestamp + 116444736000000000;
+    const auto fileTime = timestamp / 100 + DATETIMEDIFF;
     return FILETIME{static_cast<DWORD>(fileTime), static_cast<DWORD>(fileTime >> 32)};
 }
 static double ConvertDecimalToDouble(const DECIMAL &dec) noexcept
@@ -274,8 +286,16 @@ static int8_t ConvertOPCDataToByteArray(OPCItemData data, vector<uint8_t> &byteA
         memcpy(byteArray.data(), &data.vDataValue.scode, sizeof(SCODE));
         return 1;
     case VT_BOOL:
-        byteArray.resize(sizeof(VARIANT_BOOL));
-        memcpy(byteArray.data(), &data.vDataValue.boolVal, sizeof(VARIANT_BOOL));
+        byteArray.resize(sizeof(uint8_t));
+        if (data.vDataValue.boolVal != VARIANT_FALSE)
+        {
+            byteArray[0] = 1;
+        }
+        else
+        {
+            byteArray[0] = 0;
+        }
+        // memcpy(byteArray.data(), &data.vDataValue.boolVal, sizeof(uint8_t));
         return 1;
     /*case VT_VARIANT:
         return 1;*/
@@ -381,8 +401,17 @@ static bool ConvertByteArrayToOPCData(uint8_t *byteArray, VARIANT *value) noexce
     case VT_ERROR:
         memcpy(&(*value).scode, byteArray, sizeof(SCODE));
         return true;
-    case VT_BOOL:
-        memcpy(&(*value).boolVal, byteArray, sizeof(VARIANT_BOOL));
+    case VT_BOOL: {
+        if (*byteArray != 0)
+        {
+            (*value).boolVal = VARIANT_TRUE;
+        }
+        else
+        {
+            (*value).boolVal = VARIANT_FALSE;
+        }
+        // memcpy(&(*value).boolVal, byteArray, sizeof(VARIANT_BOOL));
+    }
         return true;
     /*case VT_VARIANT:
         return true;*/
