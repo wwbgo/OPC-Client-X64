@@ -177,7 +177,7 @@ static uint64_t ConvertFiletimeToLong(FILETIME fileTime) noexcept
 static FILETIME ConvertLongToFiletime(uint64_t timestamp) noexcept
 {
     const auto fileTime = timestamp + 116444736000000000;
-    return FILETIME{static_cast<DWORD>(fileTime), static_cast<DWORD>(fileTime) >> 32};
+    return FILETIME{static_cast<DWORD>(fileTime), static_cast<DWORD>(fileTime >> 32)};
 }
 static double ConvertDecimalToDouble(const DECIMAL &dec) noexcept
 {
@@ -247,13 +247,22 @@ static int8_t ConvertOPCDataToByteArray(OPCItemData data, vector<uint8_t> &byteA
         byteArray.resize(sizeof(LONGLONG));
         memcpy(byteArray.data(), &data.vDataValue.cyVal.int64, sizeof(LONGLONG));
         return 1;
-    case VT_DATE:
-        byteArray.resize(sizeof(DATE));
-        memcpy(byteArray.data(), &data.vDataValue.date, sizeof(DATE));
+    case VT_DATE: {
+        byteArray.resize(sizeof(uint64_t));
+        if (data.vDataValue.date <= 0)
+        {
+            return 1;
+        }
+        SYSTEMTIME d;
+        FILETIME ft;
+        VariantTimeToSystemTime(data.vDataValue.date, &d);
+        SystemTimeToFileTime(&d, &ft);
+        const auto timestamp = ConvertFiletimeToLong(ft);
+        memcpy(byteArray.data(), &timestamp, sizeof(uint64_t));
+    }
         return 1;
     case VT_BSTR: {
-        const wstring wstr = data.vDataValue.bstrVal;
-        const string str = COPCHost::WS2S(wstr);
+        const string str = COPCHost::WS2S(data.vDataValue.bstrVal);
         byteArray.resize(str.size());
         memcpy(byteArray.data(), str.c_str(), str.size());
     }
@@ -351,11 +360,21 @@ static bool ConvertByteArrayToOPCData(uint8_t *byteArray, VARIANT *value) noexce
     case VT_CY:
         memcpy(&(*value).cyVal.int64, byteArray, sizeof(LONGLONG));
         return true;
-    case VT_DATE:
-        memcpy(&(*value).date, byteArray, sizeof(DATE));
+    case VT_DATE: {
+        uint64_t timestamp;
+        memcpy(&timestamp, byteArray, sizeof(uint64_t));
+        const auto ft = ConvertLongToFiletime(timestamp);
+        SYSTEMTIME d;
+        FileTimeToSystemTime(&ft, &d);
+        SystemTimeToVariantTime(&d, &(*value).date);
+        // memcpy(&(*value).date, byteArray, sizeof(DATE));
+    }
         return true;
-    case VT_BSTR:
-        (*value).bstrVal = CComBSTR((char *)byteArray);
+    case VT_BSTR: {
+        const string str = (char *)byteArray;
+        const CComBSTR wstr = CComBSTR(COPCHost::S2WS(str).c_str());
+        (*value).bstrVal = wstr;
+    }
         return true;
     /*case VT_DISPATCH:
         return true;*/
