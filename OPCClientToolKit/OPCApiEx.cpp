@@ -503,29 +503,46 @@ void OPCManager::connect()
         {
             SubscribeGroups.push_back(group);
         }
+        int errorCount = groupJson.items.size();
         vector<std::wstring> itemNames;
-        std::vector<COPCItem *> itemsCreated;
-        std::vector<HRESULT> errors;
         for (auto &itemJson : groupJson.items)
         {
             // printf("opc client add item: %s\n", itemJson.name.c_str());
             itemNames.push_back(COPCHost::S2WS(itemJson.name));
         }
-        const int errorCount = group->addItems(itemNames, itemsCreated, errors, true);
+        int maxRetry = 100;
+        while (errorCount > 0 && maxRetry > 0)
+        {
+            std::vector<COPCItem *> itemsCreated;
+            std::vector<HRESULT> errors;
+            errorCount = group->addItems(itemNames, itemsCreated, errors, true);
+            if (errorCount > 0)
+            {
+                printf("opc client add items has error: %s %d\n", groupJson.name.c_str(), errorCount);
+                // throw OPCException(L"opc client add items has error");
+                Sleep(1000);
+                itemNames.clear();
+            }
+            for (size_t j = 0; j < itemsCreated.size(); j++)
+            {
+                OPCJsonItem itemJson = groupJson.items.at(j);
+                COPCItem *item = itemsCreated.at(j);
+                if (item)
+                {
+                    ItemMap.SetAt(itemJson.id, item);
+                    ItemRevoteMap.SetAt(item->getHandle(), itemJson.id);
+                }
+                else
+                {
+                    itemNames.push_back(COPCHost::S2WS(itemJson.name));
+                }
+            }
+            maxRetry--;
+        }
         if (errorCount > 0)
         {
-            printf("opc client add items has error: %s %d\n", groupJson.name.c_str(), errorCount);
-            // throw OPCException(L"opc client add items has error");
-        }
-        for (size_t j = 0; j < itemsCreated.size(); j++)
-        {
-            OPCJsonItem itemJson = groupJson.items.at(j);
-            COPCItem *item = itemsCreated.at(j);
-            if (item)
-            {
-                ItemMap.SetAt(itemJson.id, item);
-                ItemRevoteMap.SetAt(item->getHandle(), itemJson.id);
-            }
+            printf("opc client add items has error: %s %d, and skipped error items until 100 max retry\n",
+                   groupJson.name.c_str(), errorCount);
         }
     }
 
